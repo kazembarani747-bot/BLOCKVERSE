@@ -17,28 +17,52 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android packages
         run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0"
           yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download Godot 4.7.2
+        run: |
+          mkdir -p "$HOME/godot" "$HOME/.local/share/godot/export_templates/4.7.2.stable"
+          wget -q https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -O "$HOME/godot/godot.zip"
+          unzip -q "$HOME/godot/godot.zip" -d "$HOME/godot"
+          mv "$HOME/godot/Godot_v4.7.2-stable_linux.x86_64" "$HOME/godot/godot"
+          chmod +x "$HOME/godot/godot"
+
+      - name: Install Godot export templates
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz -O "$HOME/godot/templates.tpz"
+          mkdir -p "$HOME/godot/templates"
+          unzip -q "$HOME/godot/templates.tpz" -d "$HOME/godot/templates"
+          cp "$HOME/godot/templates/templates/android_debug.apk" "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk"
+          cp "$HOME/godot/templates/templates/android_release.apk" "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
+          printf '4.7.2.stable' > "$HOME/.local/share/godot/export_templates/4.7.2.stable/version.txt"
+
+      - name: Validate Godot project
+        run: |
+          "$HOME/godot/godot" --headless --path . --editor --quit
 
       - name: Export APK
-        id: export
-        uses: firebelley/godot-export@v8.0.0
-        with:
-          godot_executable_download_url: https://downloads.tuxfamily.org/godotengine/4.7.2/Godot_v4.7.2-stable_linux_headless.x86_64.zip
-          godot_export_templates_download_url: https://downloads.tuxfamily.org/godotengine/4.7.2/Godot_v4.7.2-stable_export_templates.tpz
-          relative_project_path: ./
-          presets_to_export: Android
-          relative_export_path: build
-          cache: true
+        run: |
+          mkdir -p build
+          "$HOME/godot/godot" --headless --path . --export-release Android build/BLOCKVERSE.apk
 
-      - name: Verify APK exists
+      - name: Verify APK
         run: |
           test -s build/BLOCKVERSE.apk
           file build/BLOCKVERSE.apk
           ls -lh build/BLOCKVERSE.apk
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --verbose build/BLOCKVERSE.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
