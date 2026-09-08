@@ -20,6 +20,7 @@ jobs:
 
       - name: Install Android packages
         run: |
+          set -euxo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0" "cmdline-tools;latest" "ndk;29.0.14206865" "cmake;3.22.1"
 
@@ -65,6 +66,20 @@ jobs:
           export/android/sdk_path = "$ANDROID_HOME"
           EOF
 
+      - name: Create CI release keystore
+        run: |
+          set -euxo pipefail
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/blockverse-release.keystore" \
+            -storepass blockverse \
+            -keypass blockverse \
+            -alias blockverse \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=BLOCKVERSE"
+          test -s "$RUNNER_TEMP/blockverse-release.keystore"
+
       - name: Validate Android build environment
         run: |
           set -euxo pipefail
@@ -72,9 +87,14 @@ jobs:
           sdkmanager --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36.1.0|ndk;29.0.14206865|cmake;3.22.1'
           test -x "$ANDROID_HOME/build-tools/36.1.0/apksigner"
           test -x "$ANDROID_HOME/build-tools/36.1.0/aapt2"
+          test -s "$RUNNER_TEMP/blockverse-release.keystore"
           "$HOME/godot/godot" --headless --path . --editor --quit
 
       - name: Export APK
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ runner.temp }}/blockverse-release.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: blockverse
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: blockverse
         run: |
           set -euxo pipefail
           rm -rf build
