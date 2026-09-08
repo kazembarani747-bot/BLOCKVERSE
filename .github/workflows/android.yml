@@ -31,23 +31,31 @@ jobs:
 
       - name: Download Godot 4.7.2
         run: |
+          set -euxo pipefail
           mkdir -p "$HOME/godot" "$HOME/.local/share/godot/export_templates/4.7.2.stable"
           wget -q https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -O "$HOME/godot/godot.zip"
           unzip -q "$HOME/godot/godot.zip" -d "$HOME/godot"
+          test -f "$HOME/godot/Godot_v4.7.2-stable_linux.x86_64"
           mv "$HOME/godot/Godot_v4.7.2-stable_linux.x86_64" "$HOME/godot/godot"
           chmod +x "$HOME/godot/godot"
+          "$HOME/godot/godot" --headless --version
 
-      - name: Install Godot export templates
+      - name: Install matching Godot 4.7.2 Android export templates
         run: |
+          set -euxo pipefail
           wget -q https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz -O "$HOME/godot/templates.tpz"
           mkdir -p "$HOME/godot/templates"
           unzip -q "$HOME/godot/templates.tpz" -d "$HOME/godot/templates"
+          test -f "$HOME/godot/templates/templates/android_debug.apk"
+          test -f "$HOME/godot/templates/templates/android_release.apk"
           cp "$HOME/godot/templates/templates/android_debug.apk" "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_debug.apk"
           cp "$HOME/godot/templates/templates/android_release.apk" "$HOME/.local/share/godot/export_templates/4.7.2.stable/android_release.apk"
           printf '4.7.2.stable' > "$HOME/.local/share/godot/export_templates/4.7.2.stable/version.txt"
+          ls -lh "$HOME/.local/share/godot/export_templates/4.7.2.stable/"
 
       - name: Configure Android paths
         run: |
+          set -euxo pipefail
           mkdir -p .godot
           cat > .godot/editor_settings-4.tres <<EOF
           [gd_resource type="EditorSettings" format=3]
@@ -57,21 +65,32 @@ jobs:
           export/android/sdk_path = "$ANDROID_HOME"
           EOF
 
-      - name: Validate Godot project
+      - name: Validate Android build environment
         run: |
+          set -euxo pipefail
+          java -version
+          sdkmanager --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36.1.0|ndk;29.0.14206865|cmake;3.22.1'
+          test -x "$ANDROID_HOME/build-tools/36.1.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/36.1.0/aapt2"
           "$HOME/godot/godot" --headless --path . --editor --quit
 
       - name: Export APK
         run: |
+          set -euxo pipefail
+          rm -rf build
           mkdir -p build
           "$HOME/godot/godot" --headless --path . --export-release Android build/BLOCKVERSE.apk
 
       - name: Verify APK
         run: |
+          set -euxo pipefail
           test -s build/BLOCKVERSE.apk
           file build/BLOCKVERSE.apk
           ls -lh build/BLOCKVERSE.apk
+          unzip -t build/BLOCKVERSE.apk >/dev/null
+          unzip -l build/BLOCKVERSE.apk | grep -E '(^|/)AndroidManifest.xml$|(^|/)classes.dex$'
           "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --verbose build/BLOCKVERSE.apk
+          "$ANDROID_HOME/build-tools/36.1.0/aapt2" dump badging build/BLOCKVERSE.apk | grep -E "package: name='com.kazembarani.blockverse'|application-label:'BLOCKVERSE'"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
